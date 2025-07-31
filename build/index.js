@@ -1,67 +1,123 @@
 "use strict";
-function rpcEmcCreateMatch(ctx, logger, nk, payload) {
-    if (ctx.userId) {
-        var user = nk.usersGetId([ctx.userId])[0];
-        logger.info("User " + user.username + " is creating a match.");
-        logger.info("SteamId " + user.steamId);
-        try {
-            var response = Hathora.CreateRoom(logger, nk, "London");
-            return JSON.stringify(response);
-        }
-        catch (error) {
-            return JSON.stringify({ error: "Error creating the match: " + error });
-        }
-    }
-}
 var HathoraConfig = {
-    token: "hathora_org_st_jngkrP7osvQiMIk5lh3b4K4TvusQZfPNwdcFrAMDsmkzVCMOUd_2678cd1f0aaf0063ef1bef68a6859ad4",
-    appId: "app-3c0925d5-0aa7-4471-ab6d-85746d5c5367"
+    /**
+     * Hathora API Token
+     * */
+    token: "yourathoraapitoken",
+    /**
+     * Hathora App ID
+     */
+    appId: "yourathoraappid",
+    /**
+     * Put it to false if you don't want to send the full Hathora error messages to the client
+     */
+    sendFullErrorToClient: true,
 };
 var Hathora = {
     /**
-     * Call the Hathora API to create a room
+     * Call the Hathora API to create a room in the region in parameter
+     * region must be formatted with only the first letter in uppercase
      * And returns the room id in an object
+     * (See https://hathora.dev/api#tag/RoomV2/operation/CreateRoom )
      * @param logger
      * @param nk
      * @param region
      * @returns
      */
     CreateRoom: function (logger, nk, region) {
-        if (region === void 0) { region = "London"; }
         try {
-            var response = Hathora.APICall("https://api.hathora.dev/rooms/v2/".concat(HathoraConfig.appId, "/create"), { region: region }, nk, logger);
+            var response = Hathora.APICall(nk, "https://api.hathora.dev/rooms/v2/".concat(HathoraConfig.appId, "/create"), { region: region }, 201);
             logger.info("Hathora room created with id: " + response.roomId);
             return { "roomId": response.roomId };
         }
         catch (error) {
             logger.error('Hathora Create Room error: ', error);
-            throw new Error('error: ' + error);
+            throw new Error('Hathora Create Room error :' + error.message);
         }
     },
-    APICall: function (url, parameters, nk, logger) {
-        var method = 'post';
+    /**
+     * Make a call to the Hathora Cloud API, using the hathora token specified in hathora-config.ts
+     * @param url
+     * @param parameters
+     * @param nk
+     * @param logger
+     * @returns
+     */
+    APICall: function (nk, url, parameters, validCode) {
+        if (parameters === void 0) { parameters = {}; }
+        if (validCode === void 0) { validCode = 200; }
+        // prepare the headers : json + authorization header with the token
         var headers = {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'Authorization': 'Bearer ' + HathoraConfig.token
         };
+        // make the http request, and throw corresponding errors if any
+        var method = 'post';
+        var response;
         try {
-            var response = nk.httpRequest(url, method, headers, JSON.stringify(parameters));
-            logger.info('result is: ', JSON.stringify(response));
-            return JSON.parse(response.body);
+            response = nk.httpRequest(url, method, headers, JSON.stringify(parameters));
         }
         catch (error) {
-            logger.error('Hathora API call error: ', error);
-            throw new Error('error: ' + error);
+            throw new Error('Hathora API Call error: ' + error);
         }
-    }
-};
-var Helper = {
-    UpdateUserMetadata: function (nk, userId, metadata) {
-        nk.accountUpdateId(userId, null, null, null, null, null, null, metadata);
+        // check the HTTP response code to see if valid, otherwise throw an error
+        if (response.code == validCode) {
+            return JSON.parse(response.body);
+        }
+        else {
+            throw new Error("Hathora API Call Error - code ".concat(response.code, ": ' + ").concat(response.body));
+        }
     }
 };
 var InitModule = function (ctx, logger, nk, initializer) {
-    logger.info("INIT MODULES CALLED");
-    initializer.registerRpc("emc_create_match_rpc", rpcEmcCreateMatch);
+    // Register RPCs
+    initializer.registerRpc("create_match_rpc", createMatchRpc);
 };
+/* File for Match Rpc Methods
+ * All rpc methods are regisered in `main.ts`
+*/
+/**
+ * RPC : Starts a match in the specified region
+ * @param ctx
+ * @param logger
+ * @param nk
+ * @param payload : stringified JSON object, with an optional region parameter : {region:"London"}
+ * @returns - the corresponding room id { roomId : "xxxx"}, or an error message { error : "error message"}, in a stringified JSON
+ */
+function createMatchRpc(ctx, logger, nk, payload) {
+    if (ctx.userId) {
+        // fetch the user
+        var user = nk.usersGetId([ctx.userId])[0];
+        // Here we can add some validation before creating the match 
+        // for example checking if the user has a not empty steamId to see if they're authentificated with steam
+        // fetch the region from the payload
+        var region = "London";
+        try {
+            var parsedPayload = JSON.parse(payload);
+            if (parsedPayload.region) {
+                region = parsedPayload.region;
+            }
+        }
+        catch (e) { }
+        logger.info("User " + user.username + " is creating a match in region " + region);
+        // Create the match by creating a new Hathora room for the game
+        // and returns the corresponding room id if they're is no error
+        try {
+            var response = Hathora.CreateRoom(logger, nk, region);
+            return JSON.stringify(response);
+        }
+        catch (error) {
+            var errorMessage = "Error creating the match";
+            if (HathoraConfig.sendFullErrorToClient) {
+                return JSON.stringify({ "error": errorMessage + ":" + error.message });
+            }
+            else {
+                return JSON.stringify({ "error": errorMessage });
+            }
+        }
+    }
+    else {
+        return JSON.stringify({ "error": "User not authenticated" });
+    }
+}
