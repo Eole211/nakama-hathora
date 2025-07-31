@@ -20,6 +20,9 @@ You can deploy a Nakama instance running the module by installing docker and run
 ```
 docker compose up --build nakama
 ```
+
+You can then access the Nakama console at http://localhost:7351
+
 > You may have to call twice `docker compose up --build nakama` to see your changes in the locally deployed Nakama for some reason
 
 ## Rpc call from the client
