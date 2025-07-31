@@ -44,4 +44,4 @@ string region = "London";
 var response = await client.RpcAsync(Instance._session, "create_match_rpc", $"{{\"region\" : \"{region}\"}}");
 ```
 
-See the [Nakama client libraries doc](https://heroiclabs.com/docs/nakama/client-libraries/) to know more about the Nakama Client.
+See the [Nakama client libraries doc](https://heroiclabs.com/docs/nakama/client-libraries/) to know more about the Nakama clients.
